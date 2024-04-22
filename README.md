@@ -39,7 +39,7 @@ See these features in action here: [jadx-gui features overview](https://github.c
 
 ### Download
 - release
-  from [github: ![Latest release](https://img.shields.io/github/release/skylot/jadx.svg)](https://github.com/skylot/jadx/releases/latest)
+  from [github: ![Latest release](https://img.shields.io/github/release/skylot/jadx.svg)](https://github.com/ys1231/jadx/releases/latest)
 - latest [unstable build ![GitHub commits since tagged version (branch)](https://img.shields.io/github/commits-since/skylot/jadx/latest/master)](https://nightly.link/skylot/jadx/workflows/build-artifacts/master)
 
 After download unpack zip file go to `bin` directory and run:
@@ -72,6 +72,7 @@ JDK 11 or higher must be installed:
 ```
 git clone https://github.com/skylot/jadx.git
 cd jadx
+export JADX_VERSION=1.5.0-iyue
 ./gradlew dist
 ```
 
