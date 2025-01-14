@@ -5,14 +5,13 @@ import java.util.Objects;
 import java.util.stream.Collectors;
 
 import javax.swing.JOptionPane;
-
+import jadx.api.JavaMethod;
 import org.apache.commons.text.StringEscapeUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import jadx.api.JavaClass;
 import jadx.api.JavaField;
-import jadx.api.JavaMethod;
 import jadx.api.metadata.annotations.VarNode;
 import jadx.core.codegen.TypeGen;
 import jadx.core.dex.info.MethodInfo;
@@ -55,27 +54,19 @@ public final class FridaAction extends JNodeAction {
 
 	private String generateFridaSnippet(JNode node) {
 		if (node instanceof JMethod) {
-			return generateMethodSnippet((JMethod) node);
+			return generateMethodSnippet((JMethod) node, false);
 		}
 		if (node instanceof JClass) {
-			return generateClassAllMethodSnippet((JClass) node);
+			return generateClassSnippet((JClass) node, true);
 		}
 		if (node instanceof JField) {
-			return generateFieldSnippet((JField) node);
+			return generateFieldSnippet((JField) node, false);
 		}
 		throw new JadxRuntimeException("Unsupported node type: " + (node != null ? node.getClass() : "null"));
 	}
 
-	private String generateMethodSnippet(JMethod jMth) {
-		return getMethodSnippet(jMth.getJavaMethod(), jMth.getJParent());
-	}
-
-	private String generateMethodSnippet(JavaMethod javaMethod, JClass jc) {
-		return getMethodSnippet(javaMethod, jc);
-	}
-
-	private String getMethodSnippet(JavaMethod javaMethod, JClass jc) {
-		MethodNode mth = javaMethod.getMethodNode();
+	private String generateMethodSnippet(JMethod jMth, boolean isAll) {
+		MethodNode mth = jMth.getJavaMethod().getMethodNode();
 		MethodInfo methodInfo = mth.getMethodInfo();
 		String methodName;
 		String newMethodName;
@@ -104,20 +95,26 @@ public final class FridaAction extends JNodeAction {
 			logArgs = ": " + argNames.stream().map(arg -> arg + "=${" + arg + "}").collect(Collectors.joining(", "));
 		}
 		String shortClassName = mth.getParentClass().getAlias();
-		String classSnippet = generateClassSnippet(jc);
+		String classSnippet;
+		if (isAll) {
+			classSnippet = "";
+		} else {
+			classSnippet = generateClassSnippet(jMth.getJParent());
+		}
 		if (methodInfo.isConstructor() || methodInfo.getReturnType() == ArgType.VOID) {
 			// no return value
 			return classSnippet + "\n"
 					+ shortClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-					+ "    console.log(`" + shortClassName + "." + newMethodName + " is called" + logArgs + "`);\n"
+					+ "    console.log(`start [Method] " + shortClassName + "." + newMethodName + " is called" + logArgs + "`);\n"
 					+ "    this[\"" + methodName + "\"](" + args + ");\n"
+					+ "    console.log(`end   [Method] " + shortClassName + "." + newMethodName + " result=void`);\n"
 					+ "};";
 		}
 		return classSnippet + "\n"
 				+ shortClassName + "[\"" + methodName + "\"]" + overload + ".implementation = function (" + args + ") {\n"
-				+ "    console.log(`" + shortClassName + "." + newMethodName + " is called" + logArgs + "`);\n"
+				+ "    console.log(`start [Method] " + shortClassName + "." + newMethodName + " is called" + logArgs + "`);\n"
 				+ "    let result = this[\"" + methodName + "\"](" + args + ");\n"
-				+ "    console.log(`" + shortClassName + "." + newMethodName + " result=${result}`);\n"
+				+ "    console.log(`end   [Method] " + shortClassName + "." + newMethodName + " result=${result}`);\n"
 				+ "    return result;\n"
 				+ "};";
 	}
@@ -129,16 +126,22 @@ public final class FridaAction extends JNodeAction {
 		return String.format("let %s = Java.use(\"%s\");", shortClassName, rawClassName);
 	}
 
-	private String generateClassAllMethodSnippet(JClass jc) {
+	private String generateClassSnippet(JClass jc, boolean isAll) {
 		JavaClass javaClass = jc.getCls();
-		String result = "";
-		for (JavaMethod javaMethod : javaClass.getMethods()) {
-			result = result + generateMethodSnippet(javaMethod, jc) + "\n";
+		StringBuilder classSnippet = new StringBuilder(generateClassSnippet(jc));
+		for (JavaField field : javaClass.getFields()) {
+			classSnippet.append("\n").append(generateFieldSnippet(new JField(field, jc), true));
 		}
-		return result;
+		for (JavaMethod method : javaClass.getMethods()) {
+			if (method.getName().equals("<clinit>")) {
+				continue;
+			}
+			classSnippet.append("\n").append(generateMethodSnippet(new JMethod(method, jc), true));
+		}
+		return classSnippet.toString();
 	}
 
-	private String generateFieldSnippet(JField jf) {
+	private String generateFieldSnippet(JField jf, boolean isAll) {
 		JavaField javaField = jf.getJavaField();
 		String rawFieldName = StringEscapeUtils.escapeEcmaScript(javaField.getRawName());
 		String fieldName = javaField.getName();
@@ -151,8 +154,14 @@ public final class FridaAction extends JNodeAction {
 			}
 		}
 		JClass jc = jf.getRootClass();
-		String classSnippet = generateClassSnippet(jc);
-		return String.format("%s\n%s = %s.%s.value;", classSnippet, fieldName, jc.getName(), rawFieldName);
+		String classSnippet;
+		if (isAll) {
+			classSnippet = "";
+		} else {
+			classSnippet = generateClassSnippet(jc);
+		}
+		String printLog = String.format("console.log(` [Field] %s.%s.value-> ${%s}`);\n", jc.getName(), rawFieldName, fieldName);
+		return String.format("%s\nlet %s = %s.%s.value;\n%s", classSnippet, fieldName, jc.getName(), rawFieldName, printLog);
 	}
 
 	public Boolean isOverloaded(MethodNode methodNode) {
